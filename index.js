@@ -1,5 +1,7 @@
 "use strict";
-const AWS = require('aws-sdk');
+
+// AWS SDK v3 modular imports
+const { SESClient, SendRawEmailCommand } = require("@aws-sdk/client-ses");
 
 const filterHeaders = [
     "Return-Path",
@@ -12,19 +14,17 @@ const filterHeaders = [
 ];
 
 const config = {
-    defaultEmail: "greg@agilefrontiers.com",
-    adminEmail: "admin@agilefrontiers.awsapps.com",
+    defaultEmail: "catchall@example.com",
+    adminEmail: "admin@example.awsapps.com",
     verifiedEmails: [
-        "greg@agilefrontiers.com"
+        "mail@example.com"
     ],
     ignoreEmails: [
-        "devcybiko@gmail.com"
+        "other@example.com"
     ]
 }
 
-function dummy() { }
 const log = console.log;
-// const log = dummy;
 
 function filterContent({ content, newFrom, replyTo }) {
     let lines = content.split("\n");
@@ -40,16 +40,18 @@ function filterContent({ content, newFrom, replyTo }) {
 }
 
 async function sendEmail({ content, source, destination }) {
-    var rawParams = {
+    const uint8Content = new Uint8Array(Buffer.from(content, 'utf-8'));
+    const rawParams = {
         Source: source,
         Destinations: [destination],
-        RawMessage: { Data: content }
+        RawMessage: { Data: uint8Content }
     };
     log({ rawParams });
-    let ses = new AWS.SES();
-    let result = await ses.sendRawEmail(rawParams).promise();
+    const ses = new SESClient({});
+    const result = await ses.send(new SendRawEmailCommand(rawParams));
     log({ result });
 }
+
 
 function getFromAddress(sesMsg) {
     let from = sesMsg.mail.headers.filter(header => header.name.toLowerCase() === "from")[0].value;
@@ -65,7 +67,6 @@ function getFromAddress(sesMsg) {
 }
 
 async function handler(SNSEvent, context, callback) {
-    // return callback(null, { 'disposition': 'STOP_RULE' });
     let sesMsg = JSON.parse(SNSEvent.Records[0].Sns.Message); log(JSON.stringify(sesMsg, null, 2));
     let originalDestination = sesMsg.mail.destination[0]; log({ originalDestination });
     let [originalLabel, originalFrom] = getFromAddress(sesMsg); log({ originalLabel, originalFrom });
@@ -75,7 +76,6 @@ async function handler(SNSEvent, context, callback) {
         console.log(`Previously forwarded to default ${config.defaultEmail} from ${originalDestination} by way of: ${originalFrom}`);
         return callback(null, { 'disposition': 'CONTINUE' });
     } else if (config.verifiedEmails.includes(originalDestination)) {
-        // it was destined for one of the verified email addresses... let it pass through
         console.log(`Verified email to ${originalDestination}... let it pass through`);
         return callback(null, { 'disposition': 'CONTINUE' });
     } else if (config.ignoreEmails.includes(originalFrom)) {
@@ -102,7 +102,7 @@ const event = {
                 "MessageId": "EXAMPLE7c191be45-e9aedb9a-02f9-4d12-a87d-dd0099a07f8a-000000",
                 "TopicArn": "arn:aws:sns:us-east-1:123456789012:IncomingEmail",
                 "Subject": "Amazon SES Email Receipt Notification",
-                "Message": "{\"mail\": {\"headers\":[{\"name\":\"From\",\"value\":\"test@example.com <admin@agilefrontiers.awsapps.com>\"}],\"destination\":[\"test@example.com\"]},\"content\":\"email content\"}"
+                "Message": "{\"mail\": {\"headers\":[{\"name\":\"From\",\"value\":\"test@example.com <admin@example.awsapps.com>\"}],\"destination\":[\"test1@example.com\"]},\"content\":\"email content\"}"
             },
             "Timestamp": "2019-09-06T18:52:16.076Z",
             "SignatureVersion": "1",
